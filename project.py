@@ -4,7 +4,7 @@ app = Flask(__name__)
 
 from sqlalchemy import create_engine, asc
 from sqlalchemy.orm import sessionmaker
-from database_setup import Base, Restaurant, MenuItem
+from database_setup import Base, Restaurant, MenuItem, User
 
 #New imports for OAuth
 from flask import session as login_session
@@ -133,6 +133,15 @@ def gconnect():
     login_session['username'] = data["name"]
     login_session['picture'] = data["picture"]
     login_session['email'] = data["email"]
+
+    # See if user exists, if it does not create a new one
+    user_id = getUserID(login_session['email'])
+    # If user not in database, add user by calling CreateUser
+    if not user_id:
+      user_id = CreateUser(login_session)
+    # set login_session['user_id'] to newly created DB user_id
+    login_session['user_id'] = user_id
+
   
     output = ''
     output += '<h1>Welcome, '
@@ -217,7 +226,8 @@ def newRestaurant():
   if 'username' not in login_session:
     return redirect('/login')
   if request.method == 'POST':
-      newRestaurant = Restaurant(name = request.form['name'])
+      newRestaurant = Restaurant(name = request.form['name'],
+        user_id=login_session['user_id'])
       session.add(newRestaurant)
       flash('New Restaurant %s Successfully Created' % newRestaurant.name)
       session.commit()
@@ -274,7 +284,9 @@ def newMenuItem(restaurant_id):
     return redirect('/login')
   restaurant = session.query(Restaurant).filter_by(id = restaurant_id).one()
   if request.method == 'POST':
-      newItem = MenuItem(name = request.form['name'], description = request.form['description'], price = request.form['price'], course = request.form['course'], restaurant_id = restaurant_id)
+      newItem = MenuItem(name = request.form['name'], description = request.form['description'], 
+        price = request.form['price'], course = request.form['course'], 
+        restaurant_id = restaurant_id, user_id=restaurant.user_id)
       session.add(newItem)
       session.commit()
       flash('New Menu %s Item Successfully Created' % (newItem.name))
@@ -323,7 +335,31 @@ def deleteMenuItem(restaurant_id,menu_id):
     else:
         return render_template('deleteMenuItem.html', item = itemToDelete)
 
+# Take in an email address and return an ID number if the email address belongs
+# to a user stored in the database. If not, return None
+def getUserID(email):
+  try:
+    user = session.query(User).filter_by(email = email).one()
+    return user.id
+  except:
+    return None
 
+# If a user ID is passed into method, return user object associated with this
+# ID number
+def getUserInfo(user_id):
+  user = session.query(User).filter_by(id = user_id).one()
+  return user
+
+# Creates a new user in the database extracting all of the fields necessary
+# to populate it with the information gathered from the login_session
+# Return user ID of the new user created
+def CreateUser(login_session):
+  newUser = User(name = login_session['username'], email = login_session['email'],
+    picture = login_session['picture'])
+  session.add(newUser)
+  session.commit()
+  user = session.query(User).filter_by(email = login_session['email']).one()
+  return user.id
 
 
 if __name__ == '__main__':
